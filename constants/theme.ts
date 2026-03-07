@@ -38,6 +38,12 @@ export const Fonts = Platform.select({
     /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
+  android: {
+    sans: 'normal',
+    serif: 'serif',
+    rounded: 'normal',
+    mono: 'monospace',
+  },
   default: {
     sans: 'normal',
     serif: 'serif',
