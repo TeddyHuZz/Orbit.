@@ -12,5 +12,10 @@ export default function Index() {
     return <Redirect href={"/auth/login" as Href} />;
   }
 
+  // Redirect to pairing screen if not paired and hasn't skipped
+  if (!auth.profile?.partner_id && !auth.hasSkippedPairing) {
+    return <Redirect href={"/auth/couple" as Href} />;
+  }
+
   return <Redirect href={"/(tabs)" as Href} />;
 }

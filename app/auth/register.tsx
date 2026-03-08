@@ -7,23 +7,68 @@ import { AuthInput } from '../../components/Auth/AuthInput';
 import { GlassContainer } from '../../components/Auth/GlassContainer';
 import { supabase } from '../../lib/supabase';
 
+function RequirementItem({ label, met }: { label: string; met: boolean }) {
+  return (
+    <View style={styles.requirementItem}>
+      <Text style={[styles.requirementDot, met ? styles.requirementMetDot : null]}>
+        {met ? '✓' : '○'}
+      </Text>
+      <Text style={[styles.requirementText, met ? styles.requirementMetText : null]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Error states
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  
   const router = useRouter();
 
+  const validatePassword = (pass: string) => {
+    const hasNumber = /\d/.test(pass);
+    const hasSymbol = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
+    const hasMinLength = pass.length >= 8;
+
+    if (!hasMinLength) return 'Password must be at least 8 characters';
+    if (!hasNumber) return 'Password must include at least one number';
+    if (!hasSymbol) return 'Password must include at least one symbol';
+    return '';
+  };
+
   const handleRegister = async () => {
-    if (!email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
+    // Reset errors
+    setEmailError('');
+    setPasswordError('');
+    setConfirmPasswordError('');
+
+    let hasError = false;
+
+    if (!email) {
+      setEmailError('Email is required');
+      hasError = true;
+    }
+
+    const pError = validatePassword(password);
+    if (pError) {
+      setPasswordError(pError);
+      hasError = true;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
+      setConfirmPasswordError('Passwords do not match');
+      hasError = true;
     }
+
+    if (hasError) return;
 
     setLoading(true);
     try {
@@ -38,7 +83,11 @@ export default function RegisterScreen() {
       if (error) throw error;
       
       if (!session) {
-        Alert.alert('Success', 'Verification email sent. Please check your inbox.');
+        Alert.alert(
+          'Success', 
+          'Verification email sent. Please check your inbox.',
+          [{ text: 'OK', onPress: () => router.replace('/auth/login' as Href) }]
+        );
       } else {
         router.replace('/' as Href); // Navigate to home
       }
@@ -75,7 +124,11 @@ export default function RegisterScreen() {
               label="Email"
               placeholder="Enter your email"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (emailError) setEmailError('');
+              }}
+              error={emailError}
               keyboardType="email-address"
               autoCapitalize="none"
             />
@@ -84,16 +137,40 @@ export default function RegisterScreen() {
               label="Password"
               placeholder="Create a password"
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (passwordError) setPasswordError('');
+              }}
+              error={passwordError}
               secureTextEntry
               autoCapitalize="none"
             />
+
+            {/* Password Requirements Checklist */}
+            <View style={styles.requirementsContainer}>
+              <RequirementItem 
+                label="At least 8 characters" 
+                met={password.length >= 8} 
+              />
+              <RequirementItem 
+                label="At least one number" 
+                met={/\d/.test(password)} 
+              />
+              <RequirementItem 
+                label="At least one symbol" 
+                met={/[!@#$%^&*(),.?":{}|<>]/.test(password)} 
+              />
+            </View>
 
             <AuthInput
               label="Confirm Password"
               placeholder="Repeat your password"
               value={confirmPassword}
-              onChangeText={setConfirmPassword}
+              onChangeText={(text) => {
+                setConfirmPassword(text);
+                if (confirmPasswordError) setConfirmPasswordError('');
+              }}
+              error={confirmPasswordError || (confirmPassword && password !== confirmPassword ? 'Passwords do not match' : '')}
               secureTextEntry
               autoCapitalize="none"
             />
@@ -186,5 +263,31 @@ const styles = StyleSheet.create({
     color: '#6C5CE7',
     fontSize: 14,
     fontWeight: '600',
+  },
+  requirementsContainer: {
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  requirementItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  requirementDot: {
+    color: 'rgba(255, 255, 255, 0.3)',
+    fontSize: 12,
+    marginRight: 8,
+    width: 14,
+  },
+  requirementMetDot: {
+    color: '#00C853',
+    fontWeight: '800',
+  },
+  requirementText: {
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 12,
+  },
+  requirementMetText: {
+    color: 'rgba(255, 255, 255, 0.8)',
   },
 });
