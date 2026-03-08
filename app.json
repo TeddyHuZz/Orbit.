@@ -29,6 +29,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-dev-client",
       [
         "expo-splash-screen",
         {
@@ -43,8 +44,13 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-location",
-      "expo-updates"
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Orbit to use your location to find date spots nearby.",
+          "locationAlwaysPermission": "Allow Orbit to use your location to find date spots nearby."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,8 +1,11 @@
 import { GlassContainer } from '@/components/Auth/GlassContainer';
 import { AddPlanModal } from '@/components/Home/AddPlanModal';
+import { CompleteDateModal } from '@/components/Home/CompleteDateModal';
+import { PlanDetailModal } from '@/components/Home/PlanDetailModal';
 import { useAuth } from '@/context/auth';
 import { supabase } from '@/lib/supabase';
 import { Feather, Ionicons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -22,6 +25,10 @@ export default function HomeScreen() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [completeModalVisible, setCompleteModalVisible] = useState(false);
+  const [planToComplete, setPlanToComplete] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
@@ -30,6 +37,7 @@ export default function HomeScreen() {
       const { data, error } = await supabase
         .from('date_plans')
         .select('*')
+        .eq('is_completed', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -48,7 +56,12 @@ export default function HomeScreen() {
     // Subscribe to real-time changes
     const channel = supabase
       .channel('public:date_plans')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'date_plans' }, () => {
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'date_plans',
+        filter: 'is_completed=eq.false'
+      }, () => {
         fetchPlans();
       })
       .subscribe();
@@ -58,19 +71,59 @@ export default function HomeScreen() {
     };
   }, []);
 
+  const uploadImage = async (uri: string) => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const arrayBuffer = await new Response(blob).arrayBuffer();
+      
+      const fileName = `${session?.user.id}/${Date.now()}.jpg`;
+      const { data, error } = await supabase.storage
+        .from('date-plans')
+        .upload(fileName, arrayBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('date-plans')
+        .getPublicUrl(data.path);
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw new Error('Failed to upload image to cloud');
+    }
+  };
+
   const handleCreatePlan = async (newPlan: any) => {
     try {
+      setLoading(true);
+      let updatedMedia = [...(newPlan.media || [])];
+      
+      // Upload image if exists
+      const imageMedia = updatedMedia.find(m => m.type === 'image');
+      if (imageMedia && imageMedia.url && imageMedia.url.startsWith('file')) {
+        const publicUrl = await uploadImage(imageMedia.url);
+        imageMedia.url = publicUrl;
+      }
+
       const { error } = await supabase
         .from('date_plans')
         .insert([{
           ...newPlan,
+          media: updatedMedia,
           created_by: session?.user.id,
         }]);
 
       if (error) throw error;
       fetchPlans();
     } catch (error: any) {
-      throw error;
+      Alert.alert('Error', error.message || 'Failed to save plan');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -89,10 +142,19 @@ export default function HomeScreen() {
   };
 
   const togglePlanCompletion = async (id: string, currentStatus: boolean) => {
+    if (!currentStatus) {
+      // If marking as complete, show memory modal
+      const plan = plans.find(p => p.id === id);
+      setPlanToComplete(plan);
+      setCompleteModalVisible(true);
+      return;
+    }
+
+    // If reverting from completed (only from menu)
     try {
       const { error } = await supabase
         .from('date_plans')
-        .update({ is_completed: !currentStatus })
+        .update({ is_completed: false })
         .eq('id', id);
 
       if (error) throw error;
@@ -100,6 +162,41 @@ export default function HomeScreen() {
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to update plan');
     }
+  };
+
+  const handleCompleteDate = async (memoryData: { imageUri?: string; notes: string }) => {
+    if (!planToComplete) return;
+
+    try {
+      let updatedMedia = [...(planToComplete.media || [])];
+      
+      if (memoryData.imageUri) {
+        const publicUrl = await uploadImage(memoryData.imageUri);
+        updatedMedia.push({ type: 'image', url: publicUrl, isMemory: true });
+      }
+
+      const { error } = await supabase
+        .from('date_plans')
+        .update({ 
+          is_completed: true,
+          completion_notes: memoryData.notes,
+          media: updatedMedia,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', planToComplete.id);
+
+      if (error) throw error;
+      fetchPlans();
+    } catch (error: any) {
+      throw error;
+    }
+  };
+
+  const handleOpenLink = (url: string) => {
+    Linking.openURL(url).catch((err) => {
+      console.error('Failed to open link:', err);
+      Alert.alert('Error', 'Could not open this link.');
+    });
   };
 
   const onRefresh = () => {
@@ -113,16 +210,32 @@ export default function HomeScreen() {
     const links = item.media?.filter((m: any) => m.type === 'link') || [];
 
     return (
-      <GlassContainer style={styles.planCard}>
+      <TouchableOpacity 
+        activeOpacity={0.9}
+        onPress={() => {
+          setSelectedPlan(item);
+          setDetailVisible(true);
+        }}
+      >
+        <GlassContainer style={styles.planCard}>
         <View style={styles.planHeader}>
           <Text style={styles.planTitle}>{item.title}</Text>
           <TouchableOpacity 
             style={styles.moreIcon}
             onPress={() => {
-              Alert.alert('Plan Options', 'What would you like to do?', [
+              const options = [
                 { text: 'Delete', style: 'destructive', onPress: () => handleDeletePlan(item.id) },
                 { text: 'Cancel', style: 'cancel' }
-              ]);
+              ];
+              
+              if (item.is_completed) {
+                options.unshift({ 
+                  text: 'Revert to Planned', 
+                  onPress: () => togglePlanCompletion(item.id, true) 
+                } as any);
+              }
+
+              Alert.alert('Plan Options', 'What would you like to do?', options as any);
             }}
           >
             <Feather name="more-horizontal" size={20} color="rgba(255,255,255,0.5)" />
@@ -157,9 +270,7 @@ export default function HomeScreen() {
               <TouchableOpacity 
                 key={idx} 
                 style={styles.linkBadge}
-                onPress={() => {
-                  // Link opening logic
-                }}
+                onPress={() => handleOpenLink(link.url)}
               >
                 <Feather name="link" size={12} color="#FFF" />
                 <Text style={styles.linkText} numberOfLines={1}>External Link</Text>
@@ -172,16 +283,23 @@ export default function HomeScreen() {
           <Text style={styles.dateText}>
             {new Date(item.created_at).toLocaleDateString()}
           </Text>
-          <TouchableOpacity 
-            style={[styles.statusBadge, item.is_completed && styles.statusBadgeCompleted]}
-            onPress={() => togglePlanCompletion(item.id, item.is_completed)}
-          >
-            <Text style={[styles.statusText, item.is_completed && styles.statusTextCompleted]}>
-              {item.is_completed ? 'Completed' : 'Planned'}
-            </Text>
-          </TouchableOpacity>
+          
+          {item.is_completed ? (
+            <View style={styles.statusBadgeCompleted}>
+              <Text style={styles.statusTextCompleted}>Completed</Text>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={styles.completeActionButton}
+              onPress={() => togglePlanCompletion(item.id, item.is_completed)}
+            >
+              <Ionicons name="checkmark-circle-outline" size={14} color="#FFF" />
+              <Text style={styles.completeActionText}>Mark as Complete</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </GlassContainer>
+    </TouchableOpacity>
     );
   };
 
@@ -238,6 +356,25 @@ export default function HomeScreen() {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onSave={handleCreatePlan}
+      />
+
+      <PlanDetailModal
+        visible={detailVisible}
+        onClose={() => {
+          setDetailVisible(false);
+          setSelectedPlan(null);
+        }}
+        plan={selectedPlan}
+      />
+
+      <CompleteDateModal
+        visible={completeModalVisible}
+        onClose={() => {
+          setCompleteModalVisible(false);
+          setPlanToComplete(null);
+        }}
+        onComplete={handleCompleteDate}
+        planTitle={planToComplete?.title || ''}
       />
     </SafeAreaView>
   );
@@ -381,23 +518,38 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.3)',
     fontWeight: '500',
   },
-  statusBadge: {
-    backgroundColor: 'rgba(108, 92, 231, 0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
   statusBadgeCompleted: {
-    backgroundColor: 'rgba(46, 213, 115, 0.2)',
-  },
-  statusText: {
-    fontSize: 11,
-    color: '#6C5CE7',
-    fontWeight: '700',
-    textTransform: 'uppercase',
+    backgroundColor: 'rgba(46, 213, 115, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(46, 213, 115, 0.3)',
   },
   statusTextCompleted: {
     color: '#2ED573',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  completeActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6C5CE7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+    elevation: 2,
+    shadowColor: '#6C5CE7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  completeActionText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   emptyContainer: {
     alignItems: 'center',
