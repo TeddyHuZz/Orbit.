@@ -1,12 +1,13 @@
 import { GlassContainer } from '@/components/Auth/GlassContainer';
 import { AddPlanModal } from '@/components/Home/AddPlanModal';
 import { CompleteDateModal } from '@/components/Home/CompleteDateModal';
+import { DecisionWheelModal } from '@/components/Home/DecisionWheelModal';
 import { PlanDetailModal } from '@/components/Home/PlanDetailModal';
 import { useAuth } from '@/context/auth';
 import { supabase } from '@/lib/supabase';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -29,6 +30,7 @@ export default function HomeScreen() {
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [completeModalVisible, setCompleteModalVisible] = useState(false);
   const [planToComplete, setPlanToComplete] = useState<any>(null);
+  const [wheelVisible, setWheelVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
@@ -316,7 +318,7 @@ export default function HomeScreen() {
         </View>
         <TouchableOpacity 
           style={styles.profileIcon}
-          onPress={() => router.push('/(tabs)/explore')}
+          onPress={() => router.push('/profile' as Href)}
         >
           <Ionicons name="person-circle-outline" size={32} color="#FFF" />
         </TouchableOpacity>
@@ -333,14 +335,25 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <View style={styles.listHeader}>
             <Text style={styles.sectionTitle}>Date Ideas</Text>
-            <TouchableOpacity 
-              style={[styles.addButton, { backgroundColor: '#6C5CE7' }]}
-              onPress={() => setModalVisible(true)}
-            >
-              <View style={styles.addButtonGradient}>
-                <Feather name="plus" size={24} color="#FFF" />
-              </View>
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              {plans.length > 1 && (
+                <TouchableOpacity 
+                  style={styles.pickForUsButton}
+                  onPress={() => setWheelVisible(true)}
+                >
+                  <Ionicons name="dice-outline" size={20} color="#FFF" />
+                  <Text style={styles.pickForUsText}>Pick for Us</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity 
+                style={[styles.addButton, { backgroundColor: '#6C5CE7' }]}
+                onPress={() => setModalVisible(true)}
+              >
+                <View style={styles.addButtonGradient}>
+                  <Feather name="plus" size={24} color="#FFF" />
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         }
         ListEmptyComponent={
@@ -375,6 +388,16 @@ export default function HomeScreen() {
         }}
         onComplete={handleCompleteDate}
         planTitle={planToComplete?.title || ''}
+      />
+
+      <DecisionWheelModal
+        visible={wheelVisible}
+        onClose={() => setWheelVisible(false)}
+        plans={plans}
+        onResult={(plan) => {
+          setSelectedPlan(plan);
+          setDetailVisible(true);
+        }}
       />
     </SafeAreaView>
   );
@@ -435,6 +458,27 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pickForUsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  pickForUsText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   planCard: {
     marginBottom: 16,
