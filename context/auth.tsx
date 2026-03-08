@@ -68,21 +68,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
+      
+      if (event === 'SIGNED_IN') {
+        if (session?.user) fetchProfile(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
         setProfile(null);
         setHasSkippedPairing(false);
+      } else if (event === 'PASSWORD_RECOVERY') {
+        // Navigate to reset password page - the router will handle this if we're in a component
+        // but here we might need to handle it via a state or global router
       }
+      
       setIsLoading(false);
     });
 
-    // Handle deep links for email verification
+    // Handle deep links for auth actions
     const handleDeepLink = async (url: string) => {
-      const access_token = url.split('#')[1]?.split('&').find(p => p.startsWith('access_token='))?.split('=')[1];
-      const refresh_token = url.split('#')[1]?.split('&').find(p => p.startsWith('refresh_token='))?.split('=')[1];
+      const params = url.split('#')[1] || url.split('?')[1];
+      if (!params) return;
+
+      const access_token = params.split('&').find(p => p.startsWith('access_token='))?.split('=')[1];
+      const refresh_token = params.split('&').find(p => p.startsWith('refresh_token='))?.split('=')[1];
+      const type = params.split('&').find(p => p.startsWith('type='))?.split('=')[1];
       
       if (access_token && refresh_token) {
         const { error } = await supabase.auth.setSession({
@@ -92,7 +101,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (error) {
           console.error('Error setting session from URL:', error);
-          Alert.alert('Error', 'Verification failed or link expired.');
+          Alert.alert('Error', 'Link expired or invalid.');
+        } else if (type === 'recovery' || url.includes('reset-password')) {
+          // If it's a password recovery link, we don't show the "Verified" alert
+          // The application state will now have a session, and we can let the UI
+          // handle the navigation to the reset-password screen if needed.
+          // Or we can explicitly trigger it here if router is available.
         } else {
           Alert.alert(
             'Success',

@@ -40,23 +40,6 @@ export default function LoginScreen() {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email) {
-      Alert.alert('Error', 'Please enter your email address first');
-      return;
-    }
-
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'orbit://reset-password',
-      });
-      if (error) throw error;
-      Alert.alert('Success', 'Password reset email sent! Please check your inbox.');
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -65,7 +48,7 @@ export default function LoginScreen() {
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>Orbit</Text>
+            <Text style={styles.title}>Orbit.</Text>
             <Text style={styles.subtitle}>Log your date memories together</Text>
           </View>
 
@@ -90,7 +73,10 @@ export default function LoginScreen() {
               autoCapitalize="none"
             />
 
-            <TouchableOpacity style={styles.forgotPassword}>
+            <TouchableOpacity 
+              style={styles.forgotPassword}
+              onPress={() => router.push('/auth/forgot-password' as Href)}
+            >
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
 
